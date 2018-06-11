@@ -40,7 +40,6 @@ import io.scif.FormatException;
 import io.scif.HasColorTable;
 import io.scif.ImageMetadata;
 import io.scif.config.SCIFIOConfig;
-import io.scif.io.RandomAccessInputStream;
 import io.scif.util.FormatTools;
 
 import java.io.IOException;
@@ -51,6 +50,9 @@ import net.imglib2.Interval;
 import net.imglib2.display.ColorTable;
 import net.imglib2.display.ColorTable8;
 
+import org.scijava.io.handle.DataHandle;
+import org.scijava.io.handle.DataHandle.ByteOrder;
+import org.scijava.io.location.Location;
 import org.scijava.plugin.Plugin;
 
 /**
@@ -351,12 +353,13 @@ public class GIFFormat extends AbstractFormat {
 		// -- Checker API methods --
 
 		@Override
-		public boolean isFormat(final RandomAccessInputStream in)
-			throws IOException
-		{
+		public boolean isFormat(final DataHandle<Location> in) throws IOException {
+			long off = in.offset();
 			final int blockLen = GIF_MAGIC_STRING.length();
 			if (!FormatTools.validStream(in, blockLen, false)) return false;
-			return in.readString(blockLen).startsWith(GIF_MAGIC_STRING);
+			boolean matched = in.readString(blockLen).startsWith(GIF_MAGIC_STRING);
+			in.seek(off);
+			return matched; 
 		}
 	}
 
@@ -378,13 +381,13 @@ public class GIFFormat extends AbstractFormat {
 		// -- Parser API Methods --
 
 		@Override
-		protected void typedParse(final RandomAccessInputStream stream,
+		protected void typedParse(final DataHandle<Location> stream,
 			final Metadata meta, final SCIFIOConfig config) throws IOException,
 			FormatException
 		{
 			log().info("Verifying GIF format");
 
-			stream.order(true);
+			stream.setOrder(ByteOrder.LITTLE_ENDIAN);
 			meta.setImages(new Vector<byte[]>());
 			meta.setColorTables(new Vector<int[]>());
 
@@ -466,39 +469,40 @@ public class GIFFormat extends AbstractFormat {
 		}
 
 		private void readImageBlock() throws FormatException, IOException {
-			getMetadata().setIx(getSource().readShort());
-			getMetadata().setIy(getSource().readShort());
-			getMetadata().setIw(getSource().readShort());
-			getMetadata().setIh(getSource().readShort());
+			Metadata metadata = getMetadata();
+			metadata.setIx(getSource().readShort());
+			metadata.setIy(getSource().readShort());
+			metadata.setIw(getSource().readShort());
+			metadata.setIh(getSource().readShort());
 
 			final int packed = getSource().read();
 			final boolean lctFlag = (packed & 0x80) != 0;
-			getMetadata().setInterlace((packed & 0x40) != 0);
+			metadata.setInterlace((packed & 0x40) != 0);
 			final int lctSize = 2 << (packed & 7);
 
-			getMetadata().setAct(lctFlag ? readLut(lctSize) : getMetadata().getGct());
+			metadata.setAct(lctFlag ? readLut(lctSize) : metadata.getGct());
 
-			if (getMetadata().getAct() == null) throw new FormatException(
+			if (metadata.getAct() == null) throw new FormatException(
 				"Color table not found.");
 
 			int save = 0;
 
-			if (getMetadata().isTransparency()) {
-				save = getMetadata().getAct()[getMetadata().getTransIndex()];
-				getMetadata().getAct()[getMetadata().getTransIndex()] = 0;
+			if (metadata.isTransparency()) {
+				save = metadata.getAct()[metadata.getTransIndex()];
+				metadata.getAct()[metadata.getTransIndex()] = 0;
 			}
 
 			decodeImageData();
 			skipBlocks();
 
 			// Update the plane count
-			getMetadata().get(0).setAxisLength(Axes.TIME, getMetadata().get(0)
+			metadata.get(0).setAxisLength(Axes.TIME, metadata.get(0)
 				.getAxisLength(Axes.TIME) + 1);
 
-			if (getMetadata().isTransparency()) getMetadata().getAct()[getMetadata()
+			if (metadata.isTransparency()) metadata.getAct()[metadata
 				.getTransIndex()] = save;
 
-			getMetadata().setLastDispose(getMetadata().getDispose());
+			metadata.setLastDispose(metadata.getDispose());
 		}
 
 		/** Decodes LZW image data into a pixel array. Adapted from ImageMagick. */
@@ -524,7 +528,9 @@ public class GIFFormat extends AbstractFormat {
 
 			// initialize GIF data stream decoder
 
-			final int dataSize = getSource().read() & 0xff;
+			DataHandle<Location> source = getSource();
+			int read = source.read();
+			final int dataSize = read & 0xff;
 
 			final int clear = 1 << dataSize;
 			final int eoi = clear + 1;
@@ -690,7 +696,7 @@ public class GIFFormat extends AbstractFormat {
 
 		/** Reads the next variable length block. */
 		private int readBlock() throws IOException {
-			if (getSource().getFilePointer() == getSource().length()) return -1;
+			if (getSource().offset() == getSource().length()) return -1;
 			getMetadata().setBlockSize(getSource().read() & 0xff);
 			int n = 0;
 			int count;
