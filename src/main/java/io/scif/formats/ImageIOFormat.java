@@ -42,7 +42,6 @@ import io.scif.Translator;
 import io.scif.config.SCIFIOConfig;
 import io.scif.gui.AWTImageTools;
 import io.scif.gui.BufferedImageReader;
-import io.scif.io.RandomAccessInputStream;
 import io.scif.util.FormatTools;
 import io.scif.util.SCIFIOMetadataTools;
 
@@ -57,6 +56,10 @@ import net.imagej.axis.Axes;
 import net.imglib2.Interval;
 
 import org.scijava.Priority;
+import org.scijava.io.handle.DataHandle;
+import org.scijava.io.handle.DataHandleInputStream;
+import org.scijava.io.handle.DataHandleOutputStream;
+import org.scijava.io.location.Location;
 import org.scijava.plugin.Plugin;
 
 /**
@@ -122,12 +125,12 @@ public abstract class ImageIOFormat extends AbstractFormat {
 	public static class Parser<M extends Metadata> extends AbstractParser<M> {
 
 		@Override
-		protected void typedParse(final RandomAccessInputStream stream,
-			final M meta, final SCIFIOConfig config) throws IOException,
-			FormatException
+		protected void typedParse(final DataHandle<Location> handle, final M meta,
+			final SCIFIOConfig config) throws IOException, FormatException
 		{
 			log().info("Populating metadata");
-			final DataInputStream dis = new DataInputStream(stream);
+			final DataInputStream dis = new DataInputStream(
+				new DataHandleInputStream<>(handle));
 			final BufferedImage img = ImageIO.read(dis);
 			if (img == null) throw new FormatException("Invalid image stream");
 			meta.setImg(img);
@@ -212,7 +215,7 @@ public abstract class ImageIOFormat extends AbstractFormat {
 				img = ((BufferedImagePlane) plane).getData();
 			}
 
-			ImageIO.write(img, kind, getStream());
+			ImageIO.write(img, kind, new DataHandleOutputStream<>(getHandle()));
 		}
 
 		@Override

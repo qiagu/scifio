@@ -39,7 +39,6 @@ import io.scif.FormatException;
 import io.scif.ImageMetadata;
 import io.scif.codec.JPEGTileDecoder;
 import io.scif.config.SCIFIOConfig;
-import io.scif.io.RandomAccessInputStream;
 import io.scif.util.FormatTools;
 
 import java.io.IOException;
@@ -48,6 +47,8 @@ import net.imagej.axis.Axes;
 import net.imglib2.Interval;
 
 import org.scijava.Priority;
+import org.scijava.io.handle.DataHandle;
+import org.scijava.io.location.Location;
 import org.scijava.plugin.Plugin;
 
 /**
@@ -57,7 +58,8 @@ import org.scijava.plugin.Plugin;
  * @author Melissa Linkert
  * @author Mark Hiner
  */
-@Plugin(type = Format.class, name = "Tile JPEG", priority = Priority.LOW)
+@Plugin(type = Format.class, name = "Tile JPEG",
+	priority = Priority.LOW)
 public class JPEGTileFormat extends AbstractFormat {
 
 	// -- AbstractFormat Methods --
@@ -122,7 +124,7 @@ public class JPEGTileFormat extends AbstractFormat {
 		// -- Parser API Methods --
 
 		@Override
-		protected void typedParse(final RandomAccessInputStream stream,
+		protected void typedParse(final DataHandle<Location> stream,
 			final Metadata meta, final SCIFIOConfig config) throws IOException,
 			FormatException
 		{
@@ -162,7 +164,7 @@ public class JPEGTileFormat extends AbstractFormat {
 			for (int ty = y; ty < y + h; ty++) {
 				byte[] scanline = meta.getDecoder().getScanline(ty);
 				if (scanline == null) {
-					meta.getDecoder().initialize(getStream().getFileName(), 0);
+					meta.getDecoder().initialize(getHandle(), 0);
 					scanline = meta.getDecoder().getScanline(ty);
 				}
 				System.arraycopy(scanline, c * x, buf, (ty - y) * c * w, c * w);
