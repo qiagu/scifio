@@ -39,8 +39,8 @@ import io.scif.img.ImgOpener;
 import io.scif.img.ImgSaver;
 import io.scif.img.SCIFIOImgPlus;
 
-import java.io.File;
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -51,6 +51,8 @@ import net.imagej.axis.Axes;
 import net.imagej.axis.CalibratedAxis;
 import net.imglib2.exception.IncompatibleTypeException;
 
+import org.scijava.io.location.Location;
+import org.scijava.io.location.LocationService;
 import org.scijava.log.LogService;
 import org.scijava.plugin.Parameter;
 import org.scijava.plugin.Plugin;
@@ -74,10 +76,16 @@ public class DefaultDatasetIOService extends AbstractService implements
 	private DatasetService datasetService;
 
 	@Parameter
+	private LocationService locationService;
+
+	@Parameter
 	private LogService log;
 
+	@Parameter
+	private LocationService dataHandleService;
+
 	@Override
-	public boolean canOpen(final String source) {
+	public boolean canOpen(final Location source) {
 		try {
 			return formatService.getFormat(source, new SCIFIOConfig().checkerSetOpen(
 				true)) != null;
@@ -89,9 +97,19 @@ public class DefaultDatasetIOService extends AbstractService implements
 	}
 
 	@Override
-	public boolean canSave(final String destination) {
+	public boolean canOpen(final String source) {
 		try {
-			return formatService.getWriterByExtension(destination) != null;
+			return canOpen(locationService.resolve(source));
+		}
+		catch (URISyntaxException exc) {
+			return false;
+		}
+	}
+
+	@Override
+	public boolean canSave(final Location destination) {
+		try {
+			return formatService.getWriterForLocation(destination) != null;
 		}
 		catch (final FormatException exc) {
 			log.error(exc);
@@ -100,7 +118,7 @@ public class DefaultDatasetIOService extends AbstractService implements
 	}
 
 	@Override
-	public Dataset open(final String source) throws IOException {
+	public Dataset open(final Location source) throws IOException {
 		final SCIFIOConfig config = new SCIFIOConfig();
 		config.imgOpenerSetIndex(0);
 		// skip min/max computation
@@ -111,7 +129,12 @@ public class DefaultDatasetIOService extends AbstractService implements
 	}
 
 	@Override
-	public Dataset open(final String source, final SCIFIOConfig config)
+	public Dataset open(String source) throws IOException {
+		return open(resolve(source));
+	}
+
+	@Override
+	public Dataset open(final Location source, final SCIFIOConfig config)
 		throws IOException
 	{
 		final ImgOpener imageOpener = new ImgOpener(getContext());
@@ -137,7 +160,12 @@ public class DefaultDatasetIOService extends AbstractService implements
 	}
 
 	@Override
-	public List<net.imagej.Dataset> openAll(final String source)
+	public Dataset open(String source, SCIFIOConfig config) throws IOException {
+		return open(resolve(source), config);
+	}
+
+	@Override
+	public List<net.imagej.Dataset> openAll(final Location source)
 		throws IOException
 	{
 		final SCIFIOConfig config = new SCIFIOConfig();
@@ -146,7 +174,12 @@ public class DefaultDatasetIOService extends AbstractService implements
 	}
 
 	@Override
-	public List<net.imagej.Dataset> openAll(final String source,
+	public List<Dataset> openAll(String source) throws IOException {
+		return openAll(resolve(source));
+	}
+
+	@Override
+	public List<net.imagej.Dataset> openAll(final Location source,
 		final SCIFIOConfig config) throws IOException
 	{
 		final ArrayList<Dataset> datasetList = new ArrayList<>();
@@ -175,14 +208,21 @@ public class DefaultDatasetIOService extends AbstractService implements
 	}
 
 	@Override
-	public Metadata save(final Dataset dataset, final String destination)
+	public List<Dataset> openAll(String source, SCIFIOConfig config)
+		throws IOException
+	{
+		return openAll(resolve(source), config);
+	}
+
+	@Override
+	public Metadata save(final Dataset dataset, final Location destination)
 		throws IOException
 	{
 		return save(dataset, destination, new SCIFIOConfig());
 	}
 
 	@Override
-	public Metadata save(final Dataset dataset, final String destination,
+	public Metadata save(final Dataset dataset, final Location destination,
 		final SCIFIOConfig config) throws IOException
 	{
 		@SuppressWarnings("rawtypes")
@@ -192,13 +232,10 @@ public class DefaultDatasetIOService extends AbstractService implements
 		try {
 			metadata = imageSaver.saveImg(destination, img, config);
 		}
-		catch (final ImgIOException exc) {
+		catch (ImgIOException | IncompatibleTypeException exc) {
 			throw new IOException(exc);
 		}
-		catch (final IncompatibleTypeException exc) {
-			throw new IOException(exc);
-		}
-		final String name = new File(destination).getName();
+		final String name = destination.getName();
 		dataset.setName(name);
 		dataset.setDirty(false);
 		return metadata;
@@ -211,7 +248,14 @@ public class DefaultDatasetIOService extends AbstractService implements
 			// no way to revert
 			throw new IOException("Cannot revert image of unknown origin");
 		}
-		final Dataset revertedDataset = open(source);
+		Location loc;
+		try {
+			loc = dataHandleService.resolve(source);
+		}
+		catch (final URISyntaxException exc) {
+			throw new IOException("Cannot revert image with invalid origin", exc);
+		}
+		final Dataset revertedDataset = open(loc);
 		revertedDataset.copyInto(dataset);
 	}
 
@@ -247,4 +291,12 @@ public class DefaultDatasetIOService extends AbstractService implements
 		dataset.setRGBMerged(rgbMerged);
 	}
 
+	private Location resolve(String source) throws IOException {
+		try {
+			return locationService.resolve(source);
+		}
+		catch (URISyntaxException exc) {
+			throw new IOException("Invalid source string: " + source);
+		}
+	}
 }
