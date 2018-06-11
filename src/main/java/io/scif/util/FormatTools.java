@@ -36,7 +36,6 @@ import io.scif.Plane;
 import io.scif.Reader;
 import io.scif.Writer;
 import io.scif.config.SCIFIOConfig;
-import io.scif.io.RandomAccessInputStream;
 
 import java.io.IOException;
 import java.util.List;
@@ -47,6 +46,12 @@ import net.imagej.axis.AxisType;
 import net.imagej.axis.CalibratedAxis;
 import net.imagej.axis.DefaultLinearAxis;
 import net.imagej.axis.LinearAxis;
+
+import org.scijava.io.handle.DataHandle;
+import org.scijava.io.handle.DataHandle.ByteOrder;
+import org.scijava.io.location.Location;
+import org.scijava.util.ReflectException;
+import org.scijava.util.ReflectedUniverse;
 import net.imglib2.FinalInterval;
 import net.imglib2.Interval;
 import net.imglib2.util.Intervals;
@@ -592,7 +597,7 @@ public final class FormatTools {
 	 *          reported as part of the exception message, if available. Use zero
 	 *          to suppress output of the calling method name.
 	 */
-	public static void assertStream(final RandomAccessInputStream stream,
+	public static void assertStream(final DataHandle<Location> stream,
 		final boolean notNull, final int depth)
 	{
 		String msg = null;
@@ -705,15 +710,25 @@ public final class FormatTools {
 	}
 
 	/**
-	 * Returns true if the given RandomAccessInputStream conatins at least 'len'
-	 * bytes.
+	 * Returns true if the given DataHandle contains at least 'len' bytes.
 	 */
-	public static boolean validStream(final RandomAccessInputStream stream,
+	public static boolean validStream(final DataHandle<Location> handle,
 		final int len, final boolean littleEndian) throws IOException
 	{
-		stream.seek(0);
-		stream.order(littleEndian);
-		return stream.length() >= len;
+		handle.seek(0);
+		handle.setLittleEndian(littleEndian);
+		return handle.length() >= len;
+	}
+
+	/**
+	 * Returns true if the given DataHandle contains at least 'len' bytes.
+	 */
+	public static boolean validStream(final DataHandle<Location> handle,
+		final int len, final ByteOrder order) throws IOException
+	{
+		handle.seek(0);
+		handle.setOrder(order);
+		return handle.length() >= len;
 	}
 
 	/** Returns the size in bytes of a single plane read by the given Reader. */
@@ -920,8 +935,9 @@ public final class FormatTools {
 		String filename = pattern.replaceAll(SERIES_NUM, String.valueOf(
 			imageIndex));
 
-		String imageName = r.getCurrentFile();
-		if (imageName == null) imageName = "Image#" + imageIndex;
+		String imageName = r.getCurrentFile().getName();
+		if (imageName == null || "".equals(imageName)) imageName = "Image#" +
+			imageIndex;
 		imageName = imageName.replaceAll("/", "_");
 		imageName = imageName.replaceAll("\\\\", "_");
 
