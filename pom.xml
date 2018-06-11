@@ -164,5 +164,12 @@
 			<artifactId>junit</artifactId>
 			<scope>test</scope>
 		</dependency>
+
+		<dependency>
+			<groupId>org.scijava</groupId>
+			<artifactId>scijava-io-http</artifactId>
+			<version>0.1.1-SNAPSHOT</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 </project>
